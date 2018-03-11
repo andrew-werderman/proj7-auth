@@ -26,5 +26,5 @@ def verify_auth_token(token):
 if __name__ == "__main__":
     t = generate_auth_token(10)
     for i in range(1, 20):
-	print verify_auth_token(t)
-        time.sleep(1)
+      print (verify_auth_token(t))
+      time.sleep(1)
