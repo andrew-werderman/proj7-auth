@@ -1,6 +1,7 @@
 # Brevet RESTful API
 # Author: Andrew Werderman
 
+import arrow
 import flask
 from flask import (
 	Flask, redirect, url_for, request, render_template, Response, jsonify 
@@ -10,6 +11,7 @@ from pymongo import MongoClient
 from itsdangerous import (TimedJSONWebSignatureSerializer
 							as Serializer, BadSignature,
 							SignatureExpired)
+from passlib.apps import custom_app_context as pwd_context
 
 
 # Instantiate the app
@@ -19,40 +21,80 @@ app.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 
 # Create Mongo instance
 client = MongoClient('mongodb://mongo:27017/')
-database = client['brevetdb']
-
-
-def generate_auth_token(expiration=600):
-   # s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
-   s = Serializer('test1234@#$', expires_in=expiration)
-   # pass index of user
-   return s.dumps({'id': 1})
-
-
-def verify_auth_token(token):
-    s = Serializer('test1234@#$')
-    try:
-        data = s.loads(token)
-    except SignatureExpired:
-        return None    # valid token, but expired
-    except BadSignature:
-        return None    # invalid token
-    return "Success"
+brevetdb = client['brevetdb'] 
+usersdb = client['usersdb']
 
 class Home(Resource):
-    def get(self):
-        return ''
+	def get(self):
+		return ''
 
-class Authenticate(Resource):
-    def testToken(self):
-    	return 'token request received'
 
-    def testRegister(self):
-    	return 'registration request received'
+class Register(Resource):
+	def __init__(self):
+		self.collection = usersdb['UserInfo']
 
+	def post(self):
+		'''
+		to verify a user, look up username and hashed password in db, 
+		verify the inputted password against the stored hashed password in the db
+
+		curl -d "username=jeffrey&password=admin" localhost:5001/api/register
+		'''
+		username = request.form.get('username')
+		password = request.form.get('password')
+
+		# Handle username is already in use. (True: return appropriate message)
+		if (self.collection.find_one({'username': username})):
+			# Bad Request is returned
+			return {'Error': '{} already in use.'.format(username)}, 400
+
+		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
+			return {'Error': 'Please provide a username and password.'}, 400
+
+		# Hash password
+		hVal = pwd_context.encrypt(password)
+
+		# Insert: {'username': username, 'password': hVal} into self.collection
+		self.collection.insert_one({'username': username, 'password': hVal})
+
+		# get ObjectId()
+		user = self.collection.find_one({'username': username})
+		info = {'Location': str(user['_id']), 'username': username, 'DateAdded': arrow.now().for_json()}
+		
+		response = flask.jsonify(info)
+		response.status_code = 201
+		return response
+
+	# edit to take in a username and look up hashVal instead
+	def verify_password(password, hashVal):
+		return pwd_context.verify(password, hashVal)
+
+
+class Token(Resource):
+	def get(self):
+		return 'token request received'
+
+	def generate_auth_token(expiration=600):
+		s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
+		# pass index of user
+		return s.dumps({'id': 1})
+
+	def verify_auth_token(token):
+		s = Serializer('test1234@#$')
+		try:
+			data = s.loads(token)
+		except SignatureExpired:
+			return None    # valid token, but expired
+		except BadSignature:
+			return None    # invalid token
+		return "Success"
+
+
+# Can only be accessed with the correct token.
 class ListBrevet(Resource):
 	def __init__(self):
-		self.collection = database['brevet']
+		#******** Change to be user specific *************
+		self.collection = brevetdb['brevet'] 
 
 	def get(self, items='listAll', resultFormat='json'):
 		'''
@@ -67,7 +109,7 @@ class ListBrevet(Resource):
 		top = request.args.get('top')
 
 		# Handle empty brevet
-		if self.collection.find().count() == 0:
+		if self.collection.count() == 0:
 			return jsonify({'Error': 'Empty Brevet'})
 
 		# Handle unexpected query.
@@ -100,7 +142,6 @@ class ListBrevet(Resource):
 			return Response(result, mimetype='text/csv')
 
 		return jsonify(result)
-
 
 	def formatResponse(brevet, resultFormat, *args):
 		'''
@@ -136,9 +177,9 @@ class ListBrevet(Resource):
 
 # Create routes
 api.add_resource(Home, '/')
-api.add_resource(Authenticate, '/api/token', endpoint='testToken')
-api.add_resource(Authenticate, '/api/register', endpoint='testRegister')
-api.add_resource(ListBrevet, '/<items>/<resultFormat>', endpoint='get')
+api.add_resource(Token, '/api/token')
+api.add_resource(Register, '/api/register')
+api.add_resource(ListBrevet, '/api/<items>/<resultFormat>')
 
 # Run the application
 if __name__ == '__main__':
