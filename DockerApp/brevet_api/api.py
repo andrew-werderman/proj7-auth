@@ -65,16 +65,28 @@ class Register(Resource):
 		response.status_code = 201
 		return response
 
-	# edit to take in a username and look up hashVal instead
-	def verify_password(password, hashVal):
-		return pwd_context.verify(password, hashVal)
-
 
 class Token(Resource):
+	def __init__(self):
+		self.collection = usersdb['UserInfo']
+
 	def get(self):
+		'''
+		curl -u "jeffrey:admin" localhost:5001/api/token
+		curl -u "<tokenstring>:none" localhost:5001/api/token
+		'''
+
+		username = request.form.get('username')
+		password = request.form.get('password')
+
+		if not (self.collection.find_one({'username': username})):
+			return {'Error': 'User does not exist.'}, 401
+
+		if not (verify_password(username, password))
+
 		return 'token request received'
 
-	def generate_auth_token(expiration=600):
+	def generate_auth_token(self, expiration=600):
 		s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
 		# pass index of user
 		return s.dumps({'id': 1})
@@ -88,6 +100,18 @@ class Token(Resource):
 		except BadSignature:
 			return None    # invalid token
 		return "Success"
+
+	def verify_password(username, password):
+		'''
+		inputs: username and password
+		output: True for correct password, else False
+
+		Check inputted password against saved hashed password, and 
+		return True or False depending on whether the password is correct or not.
+		'''
+		user = self.collection.find_one({'username': username})
+		hashVal = user['password']
+		return pwd_context.verify(password, hashVal)
 
 
 # Can only be accessed with the correct token.
