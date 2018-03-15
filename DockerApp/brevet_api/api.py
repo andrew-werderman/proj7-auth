@@ -3,6 +3,7 @@
 
 import arrow
 import flask
+import base64
 from flask import (
 	Flask, redirect, url_for, request, render_template, Response, jsonify 
 	)
@@ -12,7 +13,7 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
 							as Serializer, BadSignature,
 							SignatureExpired)
 from passlib.apps import custom_app_context as pwd_context
-from basicauth import decode
+from basicauth import decode as authDecode
 from functools import wraps
 
 # Instantiate the app
@@ -63,7 +64,7 @@ class Register(Resource):
 		# Hash password
 		hVal = pwd_context.encrypt(password)
 
-		# Insert: {'username': username, 'password': hVal} into self.collection
+		# Insert username, hashed password into collection
 		self.collection.insert_one({'username': username, 'password': hVal})
 
 		# Get user object
@@ -94,17 +95,25 @@ class Token(Resource):
 		USE: curl -u "jeffrey:admin" localhost:5001/api/token
 		'''
 		message = request.headers.get('Authorization')
-		username, password = decode(message)
 
+		try:
+			username, password = authDecode(message)
+		except AttributeError:
+			# If no credentials given
+			return {'Error': 'Unauthorized'}, 401
+
+		# Handle case where username not in db
 		if not (self.collection.find_one({'username': username})):
 			return {'Error': 'User does not exist.'}, 401
 
+		# Handle incorrect password for user
 		if not (Token.verify_password(self, username, password)):
 			return {'Error': 'Unauthorized'}, 401
 
-		duration = 600
+		# Set return information
+		duration = 600  # 600 seconds -- 10 minutes
 		token = Token.generate_auth_token(self, username, duration)
-		info = {'token': str(token), 'duration': duration}
+		info = {'token': token.decode('utf-8'), 'duration': duration}
 
 		response = flask.jsonify(info)
 		response.status_code = 200
@@ -134,12 +143,16 @@ class Token(Resource):
 
 
 def authenticate(func):
+	'''
+	Wrapper to make sure each request is an authenticated one
+	'''
 	@wraps(func)
 	def wrapper(*args, **kwargs):
 		message = request.headers.get('Authorization')
 		try:
-			token,_ = decode(message)
-		except AttributeError:
+			token,_ = authDecode(message)
+		except AttributeError:	
+			# If no credentials given
 			return {'Error': 'unauthorized'}, 401
 
 		if verify_auth_token(token):
@@ -150,6 +163,10 @@ def authenticate(func):
 
 
 def verify_auth_token(token):
+	'''
+	input: token string
+	output: True if token is valid, else false
+	'''
 	s = Serializer(app.config['SECRET_KEY'])
 	try:
 		data = s.loads(token)
@@ -162,6 +179,7 @@ def verify_auth_token(token):
 
 # Can only be accessed with the correct token.
 class ListBrevet(Resource):
+	# All functions in this class must come from an authenticated user
 	method_decorators = [authenticate]
 
 	def __init__(self):
@@ -177,7 +195,7 @@ class ListBrevet(Resource):
 			resultFormat='json' gives an array of dictionaries
 			resultFormat='csv' gives an array of arrays
 
-		curl -u "<tokenstring>:none" localhost:5001/api/token
+		USE: curl -u "<tokenstring>:none" localhost:5001/api/token
 		'''
 		top = request.args.get('top')
 
@@ -231,18 +249,20 @@ class ListBrevet(Resource):
 		csv = ''
 		if (resultFormat == 'json'):
 			for ctrl in brevet:
+				# Could possibly be given two args (open_time/close_time) aka 'key', 
+				# add each to a dictionary and append control
 				jsonDict = {key:ctrl[key] for key in args}
 				json.append(jsonDict)
 		else:
-			csv += str(args[0])
+			csv += str(args[0]) # First argument of format
 			if (len(args) > 1):
-				csv += ', {}\n'.format(args[1])
+				csv += ', {}\n'.format(args[1]) # If two arguments are given, add the second to the first line
 				for ctrl in brevet:
-					csv += '{}, {}\n'.format(ctrl[args[0]], ctrl[args[1]])
+					csv += '{}, {}\n'.format(ctrl[args[0]], ctrl[args[1]])	# Add all controls in csv format
 			else:
 				csv += '\n'
 				for ctrl in brevet:
-					csv += '{}\n'.format(ctrl[args[0]])
+					csv += '{}\n'.format(ctrl[args[0]])	# Else, add all the singleton control values in csv
 
 		output = {'json': json, 'csv': csv}
 		return output[resultFormat]
