@@ -6,14 +6,14 @@ import flask
 from flask import (
 	Flask, redirect, url_for, request, render_template, Response, jsonify 
 	)
-from flask_restful import Resource, Api
+from flask_restful import Resource, Api, abort
 from pymongo import MongoClient
 from itsdangerous import (TimedJSONWebSignatureSerializer
 							as Serializer, BadSignature,
 							SignatureExpired)
 from passlib.apps import custom_app_context as pwd_context
 from basicauth import decode
-
+from functools import wraps
 
 # Instantiate the app
 app = Flask(__name__)
@@ -133,10 +133,38 @@ class Token(Resource):
 		return s.dumps({'id': str(user['_id'])})
 
 
+def authenticate(func):
+	@wraps(func)
+	def wrapper(*args, **kwargs):
+		message = request.headers.get('Authorization')
+		try:
+			token,_ = decode(message)
+		except AttributeError:
+			return {'Error': 'unauthorized'}, 401
+
+		if verify_auth_token(token):
+			return func(*args, **kwargs)
+
+		abort(401)
+	return wrapper
+
+
+def verify_auth_token(token):
+	s = Serializer(app.config['SECRET_KEY'])
+	try:
+		data = s.loads(token)
+	except SignatureExpired:
+		return False    # valid token, but expired
+	except BadSignature:
+		return False    # invalid token
+	return True
+
+
 # Can only be accessed with the correct token.
 class ListBrevet(Resource):
+	method_decorators = [authenticate]
+
 	def __init__(self):
-		#******** Change to be user specific *************
 		self.collection = brevetdb['brevet'] 
 
 	def get(self, items='listAll', resultFormat='json'):
@@ -219,22 +247,12 @@ class ListBrevet(Resource):
 		output = {'json': json, 'csv': csv}
 		return output[resultFormat]
 
-	def verify_auth_token(token):
-		s = Serializer(app.config['SECRET_KEY'])
-		try:
-			data = s.loads(token)
-		except SignatureExpired:
-			return None    # valid token, but expired
-		except BadSignature:
-			return None    # invalid token
-		return "Success"
-
 
 # Create routes
 api.add_resource(Home, '/')
 api.add_resource(Token, '/api/token')
 api.add_resource(Register, '/api/register')
-api.add_resource(ListBrevet, '/api/<items>/<resultFormat>')
+api.add_resource(ListBrevet, '/<items>', '/<items>/<resultFormat>')
 
 # Run the application
 if __name__ == '__main__':
