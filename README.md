@@ -2,79 +2,35 @@
 
 ## What is in this repository
 
-You have a minimal implementation of password- and token-based authentication modules in "Auth" folder, using which you can create authenticated REST API-based services (as demonstrated in class). 
+You have a minimal implementation of password- and token-based authentication modules in "Auth" folder, using which you can create authenticated RESTful API-based services. 
 
-## Recap 
+Implemented and Maintained by Andrew Werderman. (amwerderman@gmail.com)
 
-You will reuse *your* code from project
-6 (https://github.com/UOCIS322/proj6-rest). Recall: you created the 
-following three parts: 
 
-* You designed RESTful services to expose what is stored in MongoDB.
-Specifically, you used the boilerplate given in DockerRestAPI folder, and
-created the following:
+## Functionality
 
-** "http://<host:port>/listAll" should return all open and close times in the database
+Use `docker-compose up` to set up and start the ecosystem. Once started, the database needs to be populated.
+So, first visit `http://<host:5002>/` to populate the brevet with controls. 
 
-** "http://<host:port>/listOpenOnly" should return open times only
+Next, to expose the API, the user will need to register. To register use the following
+POST request in the command line:
 
-** "http://<host:port>/listCloseOnly" should return close times only
+`curl -d "username=<username>&password=<password>" localhost:5001/api/register`
 
-* You also designed two different representations: one in csv and one 
- in json. For the above, JSON should be your default representation. 
+Then, once registered, the user will need to generate a token to use the API. To make the 
+GET request for the token, the user will use the same username and password they registered with.
 
-** "http://<host:port>/listAll/csv" should return all open and close times in CSV format
+`curl -u "<username>:<password>" localhost:5001/api/token`
 
-** "http://<host:port>/listOpenOnly/csv" should return open times only in CSV format
+This last request will return a JSON object with two fields. 'Duration' is the approximate number of
+seconds the given token is valid for. 'Token' is the token the user will use to use the API's resources.
+To use the token to GET the resources, the user will copy and paste the token into their succeeding
+requests like so:
 
-** "http://<host:port>/listCloseOnly/csv" should return close times only in CSV format
+`curl -u "<token>:" localhost:5001/<items>/<format>`
+NOTE: If you do not want to get prompted to enter a password (which would be to nothing), include the ':'. 
 
-** "http://<host:port>/listAll/json" should return all open and close times in JSON format
-
-** "http://<host:port>/listOpenOnly/json" should return open times only in JSON format
-
-** "http://<host:port>/listCloseOnly/json" should return close times only in JSON format
-
-* You also added a query parameter to get top "k" open and close
-times. For examples, see below.
-
-** "http://<host:port>/listOpenOnly/csv?top=3" should return top 3 open times only (in ascending order) in CSV format 
-
-** "http://<host:port>/listOpenOnly/json?top=5" should return top 5 open times only (in ascending order) in JSON format
-
-* You'll also designed consumer programs (e.g., in jQuery) to expose the services.
-
-## Functionality you will add
-
-In this project, you will add the following functionality:
-
-- POST **/api/register**
-
-    Registers a new user. On success a status code 201 is returned. The body of the response contains
-a JSON object with the newly added user. A `Location` header contains the URI
-of the new user. On failure status code 400 (bad request) is returned. Note: The 
-password is hashed before it is stored in the database. Once hashed, the original 
-password is discarded. Your database should have three fields: id (unique index),
-username and password. 
-
-- GET **/api/token**
-
-    Returns a token. This request must be authenticated using a HTTP Basic
-Authentication (see password.py for example). On success a JSON object is returned 
-with a field `token` set to the authentication token for the user and 
-a field `duration` set to the (approximate) number of seconds the token is 
-valid. On failure status code 401 (unauthorized) is returned.
-
-- GET **/RESOURCE-YOU-CREATED-IN-PROJECT-6**
-
-    Return a protected <resource>, which is basically what you created in project 6. This request must be authenticated using token-based authentication only (see testToken.py). HTTP password-based (basic) authentication is not allowed. On success a JSON object with data for the authenticated user is returned. On failure status code 401 (unauthorized) is returned.
-
-## Tasks
-
-You'll turn in your credentials.ini using which we will get the following:
-
-* The working application with three parts.
-
-* Dockerfile
-
-* docker-compose.yml
+Here `<items>` refers to 'listAll', 'listOpenOnly', or 'listCloseOnly'. Anything else will return an
+error. `<format>` is optional and will default to JSON, but 'json' and 'csv' are the possible inputs.
+Finally, if desired, the user can add `?top=<num>` to the end of their http request to limit the number
+of responses. `<num>` is expected to be a positive integer. 
