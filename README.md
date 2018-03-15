@@ -4,7 +4,7 @@
 
 You have a minimal implementation of password- and token-based authentication modules in "Auth" folder, using which you can create authenticated RESTful API-based services. 
 
-Implemented and Maintained by Andrew Werderman. (amwerderman@gmail.com)
+Implemented and maintained by Andrew Werderman. (amwerderman@gmail.com)
 
 
 ## Functionality
