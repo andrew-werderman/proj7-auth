@@ -12,6 +12,7 @@ from itsdangerous import (TimedJSONWebSignatureSerializer
 							as Serializer, BadSignature,
 							SignatureExpired)
 from passlib.apps import custom_app_context as pwd_context
+from basicauth import decode
 
 
 # Instantiate the app
@@ -35,11 +36,18 @@ class Register(Resource):
 
 	def post(self):
 		'''
-		to verify a user, look up username and hashed password in db, 
-		verify the inputted password against the stored hashed password in the db
+		Function executed on a POST request to register. If the username is not
+		taken, the function will:
+		  1. Hash the user's desired password
+		  2. Insert the username and hashed password in the usersdb database.
+		  3. Return a JSON object of the unique user_id, username, and date_added
+		  with a status code of 201.
 
-		curl -d "username=jeffrey&password=admin" localhost:5001/api/register
+		Upon failure, an error with status code 400 (bad request) is returned.
+
+		USE: curl -d "username=jeffrey&password=admin" localhost:5001/api/register
 		'''
+		#Get arguements from cURL
 		username = request.form.get('username')
 		password = request.form.get('password')
 
@@ -48,6 +56,7 @@ class Register(Resource):
 			# Bad Request is returned
 			return {'Error': '{} already in use.'.format(username)}, 400
 
+		# Handle invalid inputs
 		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
 			return {'Error': 'Please provide a username and password.'}, 400
 
@@ -57,10 +66,11 @@ class Register(Resource):
 		# Insert: {'username': username, 'password': hVal} into self.collection
 		self.collection.insert_one({'username': username, 'password': hVal})
 
-		# get ObjectId()
+		# Get user object
 		user = self.collection.find_one({'username': username})
-		info = {'Location': str(user['_id']), 'username': username, 'DateAdded': arrow.now().for_json()}
-		
+
+		# Format response
+		info = {'location': str(user['_id']), 'username': username, 'date_added': arrow.now().for_json()}
 		response = flask.jsonify(info)
 		response.status_code = 201
 		return response
@@ -72,36 +82,35 @@ class Token(Resource):
 
 	def get(self):
 		'''
-		curl -u "jeffrey:admin" localhost:5001/api/token
-		curl -u "<tokenstring>:none" localhost:5001/api/token
-		'''
+		Function executed on a 'GET /api/token' request. Upon request,
+		this function will:
+		  1. Authenticate the user with a verify_password() call.
+		  2. Set an expiration (in seconds) on the token.
+		  3. Return a JSON object of the requested token, and 
+		  duration of the token.
+		
+		On failure, an error message with status code 401 (unauthorized) is returned.
 
-		username = request.form.get('username')
-		password = request.form.get('password')
+		USE: curl -u "jeffrey:admin" localhost:5001/api/token
+		'''
+		message = request.headers.get('Authorization')
+		username, password = decode(message)
 
 		if not (self.collection.find_one({'username': username})):
 			return {'Error': 'User does not exist.'}, 401
 
-		if not (verify_password(username, password))
+		if not (Token.verify_password(self, username, password)):
+			return {'Error': 'Unauthorized'}, 401
 
-		return 'token request received'
+		duration = 600
+		token = Token.generate_auth_token(self, username, duration)
+		info = {'token': str(token), 'duration': duration}
 
-	def generate_auth_token(self, expiration=600):
-		s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
-		# pass index of user
-		return s.dumps({'id': 1})
+		response = flask.jsonify(info)
+		response.status_code = 200
+		return response 
 
-	def verify_auth_token(token):
-		s = Serializer('test1234@#$')
-		try:
-			data = s.loads(token)
-		except SignatureExpired:
-			return None    # valid token, but expired
-		except BadSignature:
-			return None    # invalid token
-		return "Success"
-
-	def verify_password(username, password):
+	def verify_password(self, username, password):
 		'''
 		inputs: username and password
 		output: True for correct password, else False
@@ -112,6 +121,16 @@ class Token(Resource):
 		user = self.collection.find_one({'username': username})
 		hashVal = user['password']
 		return pwd_context.verify(password, hashVal)
+
+	def generate_auth_token(self, username, expiration=600):
+		'''
+		inputs: username and expiration (the approx. number of seconds before 
+				the expiration of the token)
+		output: authentication token
+		'''
+		s = Serializer(app.config['SECRET_KEY'], expires_in=expiration)
+		user = self.collection.find_one({'username': username})
+		return s.dumps({'id': str(user['_id'])})
 
 
 # Can only be accessed with the correct token.
@@ -129,6 +148,8 @@ class ListBrevet(Resource):
 			array of brevet control open and/or close times
 			resultFormat='json' gives an array of dictionaries
 			resultFormat='csv' gives an array of arrays
+
+		curl -u "<tokenstring>:none" localhost:5001/api/token
 		'''
 		top = request.args.get('top')
 
@@ -197,6 +218,16 @@ class ListBrevet(Resource):
 
 		output = {'json': json, 'csv': csv}
 		return output[resultFormat]
+
+	def verify_auth_token(token):
+		s = Serializer(app.config['SECRET_KEY'])
+		try:
+			data = s.loads(token)
+		except SignatureExpired:
+			return None    # valid token, but expired
+		except BadSignature:
+			return None    # invalid token
+		return "Success"
 
 
 # Create routes
