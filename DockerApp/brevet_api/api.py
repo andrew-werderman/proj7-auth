@@ -46,7 +46,7 @@ class Register(Resource):
 
 		Upon failure, an error with status code 400 (bad request) is returned.
 
-		USE: curl -d "username=jeffrey&password=admin" localhost:5001/api/register
+		USE: curl -d "username=<username>&password=<password>" localhost:5001/api/register
 		'''
 		#Get arguements from cURL
 		username = request.form.get('username')
@@ -92,7 +92,7 @@ class Token(Resource):
 		
 		On failure, an error message with status code 401 (unauthorized) is returned.
 
-		USE: curl -u "jeffrey:admin" localhost:5001/api/token
+		USE: curl -u "<username>:<password>" localhost:5001/api/token
 		'''
 		message = request.headers.get('Authorization')
 
@@ -195,7 +195,7 @@ class ListBrevet(Resource):
 			resultFormat='json' gives an array of dictionaries
 			resultFormat='csv' gives an array of arrays
 
-		USE: curl -u "<tokenstring>:none" localhost:5001/api/token
+		USE: curl -u "<tokenstring>:" localhost:5001/api/token
 		'''
 		top = request.args.get('top')
 
