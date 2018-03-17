@@ -51,16 +51,16 @@ class Register(Resource):
 		#Get arguements from cURL
 		username = request.form.get('username')
 		password = request.form.get('password')
+		
+		# Handle invalid inputs
+		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
+			return {'Error': 'Please provide a username and password.'}, 400
 
 		# Handle username is already in use. (True: return appropriate message)
 		if (self.collection.find_one({'username': username})):
 			# Bad Request is returned
 			return {'Error': '{} already in use.'.format(username)}, 400
-
-		# Handle invalid inputs
-		if ((username == None) or (username == '')) or ((password == None) or (password == '')):
-			return {'Error': 'Please provide a username and password.'}, 400
-
+		
 		# Hash password
 		hVal = pwd_context.encrypt(password)
 
